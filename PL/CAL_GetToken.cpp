@@ -1,0 +1,638 @@
+# include <stdio.h>
+# include <stdlib.h>
+# include <string.h>
+
+# define NOT !
+# define AND &&
+# define OR ||
+# define EQ ==
+
+enum TokenType { IDENTIFIER = 17222, CONSTANT = 54321, SPECIAL = 71359 } ;
+typedef char * CharPtr ;    // the strings of all tokens are to be stored in the heap
+
+struct Column {
+  int column ;
+  Column * next ;
+} ; // Column
+
+typedef Column * ColumnPtr ;
+
+struct Line {
+  int line ;
+  ColumnPtr firstAppearAt ;
+  ColumnPtr lastAppearAt ;
+  Line * next ;
+} ; // Line
+
+typedef Line * LinePtr ;
+
+struct Token {
+  CharPtr tokenStr ;
+  TokenType type ;
+  LinePtr firstAppearOn ;
+  LinePtr lastAppearOn ;
+  Token * next ;
+} ; // Token
+
+typedef Token * TokenPtr ;
+
+static int uTestNum = -1 ;
+
+int gLine = 1 ;    // the line-no of of the char that is yet to be read in
+int gColumn = 1 ;  // the column-no of of the char that is yet to be read in
+
+char gNextChar = '\0' ;    // the char we just read in
+int gNextCharLine = -1 ;   // line-no of gNextChar (the char we just read in)
+int gNextCharColumn = -1 ; // column-no of gNextChar (the char we just read in)
+
+TokenPtr gFront = NULL ;   // !!! the stored token list is empty at the start
+
+typedef char Str40[100] ;
+
+bool gNext = false ;
+
+void GetNextChar( char & ch, int & line, int & column ) {
+
+  scanf( "%c", &ch ) ;
+  if ( gNext ) { 
+    line++ ;
+    column = 0 ;
+    gNext = false ;
+  } // if
+
+  if ( line == -1 ) {
+    line = gLine ;
+    column = gColumn ;
+  } // if
+  else if ( ch == '\n' ) {
+    gNext = true ;
+    column++ ;
+  } // else if
+  else column++ ;
+
+} // GetNextChar()
+
+bool IsDigit( char ch ) {
+
+  if ( ch == '0' )  return true ;
+  else if ( ch == '1' )  return true ;
+  else if ( ch == '2' )  return true ;
+  else if ( ch == '3' )  return true ;
+  else if ( ch == '4' )  return true ;
+  else if ( ch == '5' )  return true ;
+  else if ( ch == '6' )  return true ;
+  else if ( ch == '7' )  return true ;
+  else if ( ch == '8' )  return true ;
+  else if ( ch == '9' )  return true ;
+  return false ;
+
+} // IsDigit()
+
+bool IsLetter( char ch ) {
+
+  if ( ch >= 65 && ch <= 90 )  return true ;
+  else if ( ch >= 97 && ch <= 122 )  return true ;
+  return false ;
+
+} // IsLetter()
+
+bool IsWhiteSpace( char ch ) {
+
+  if ( ch == '\n' )  return true ;
+  else if ( ch == ' ' )  return true ;
+  else if ( ch == '\t' )  return true ;
+  return false ;
+
+} // IsWhiteSpace()
+
+bool IsSpecial( char ch ) {
+
+  if ( ch == '^' )  return true ;
+  else if ( ch == ',' )  return true ;
+  else if ( ch == '(' )  return true ;
+  else if ( ch == ')' )  return true ;
+  else if ( ch == '[' )  return true ;
+  else if ( ch == ']' )  return true ;
+  else if ( ch == '{' )  return true ;
+  else if ( ch == '}' )  return true ;
+  else if ( ch == '!' )  return true ;
+  else if ( ch == ':' )  return true ;
+  else if ( ch == ';' )  return true ;
+  else if ( ch == '#' )  return true ;
+  else if ( ch == '?' )  return true ;
+  else if ( ch == '+' )  return true ;
+  else if ( ch == '-' )  return true ;
+  else if ( ch == '*' )  return true ;
+  else if ( ch == '/' )  return true ;
+  else if ( ch == '>' )  return true ;
+  else if ( ch == '<' )  return true ;
+  else if ( ch == '=' )  return true ;
+  else if ( ch == '%' )  return true ;
+  else if ( ch == '&' )  return true ;
+  else if ( ch == '|' )  return true ;
+  return false ;
+
+} // IsSpecial()
+
+void SkipWhiteSpaces() {
+  
+  while ( gNextChar == ' ' || gNextChar == '\n' || gNextChar == '\t' ) {
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // while
+
+} // SkipWhiteSpaces()
+
+void SkipLineComment() {
+
+  while ( gNextChar != '\n' ) {
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // while  
+
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+
+} // SkipLineComment()
+
+void SkipMultiLineComment() {
+  char before = '\0' ;
+  while ( true ) {
+    before = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+    if ( before == '*' && gNextChar == '/' ) {
+      GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+      return ;
+    } // if
+  } // while
+
+} // SkipMultiLineComment()
+
+CharPtr GetID() {
+
+  Str40 id = "\0" ;
+  int i = 0 ;
+  while ( IsLetter( gNextChar ) || IsDigit( gNextChar ) || gNextChar == '_' ) {
+    id[i] = gNextChar ;
+    i++ ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // while
+
+  CharPtr idPtr = new Str40 ;
+  strcpy( idPtr, id ) ;
+  return idPtr ;
+
+} // GetID() 
+
+CharPtr GetNum() {
+
+  Str40 num = "\0" ;
+  int i = 0 ;
+  while ( IsDigit( gNextChar ) || gNextChar == '.' ) {
+    num[i] = gNextChar ;
+    i++ ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // while
+
+  CharPtr numPtr = new Str40 ;
+  strcpy( numPtr, num ) ;
+  return numPtr ;
+  
+} // GetNum()
+
+CharPtr GetCharConst() {
+
+  Str40 charconst = "\0" ;
+  int i = 1 ;
+  char before = '\0' ;
+
+  charconst[0] = '\'' ;
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  while ( gNextChar != '\'' || before == '\\' ) {
+    charconst[i] = gNextChar ;
+    i++ ;
+    before = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // while
+
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  charconst[i] = '\'' ;
+  CharPtr charconstPtr = new Str40 ;
+  strcpy( charconstPtr, charconst ) ;
+  return charconstPtr ;
+
+} // GetCharConst()
+
+CharPtr GetStringConst() {
+
+  Str40 strconst = "\0" ;
+  int i = 1 ;
+  char before = '\0' ;
+
+  strconst[0] = '\"' ;
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  while ( gNextChar != '\"' || before == '\\' ) {
+    strconst[i] = gNextChar ;
+    i++ ;
+    before = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // while
+
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  strconst[i] = '\"' ;
+  CharPtr strconstPtr = new Str40 ;
+  strcpy( strconstPtr, strconst ) ;
+  return strconstPtr ;
+
+} // GetStringConst()
+
+CharPtr GetSpecial() {
+
+  Str40 special = "\0" ;
+  special[0] = gNextChar ;
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+
+  if ( special[0] == '+' ) {
+    if ( gNextChar == '=' || gNextChar == '+' ) {
+      special[1] = gNextChar ;
+      GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+    } // if
+  } // if
+  else if ( special[0] == '-' ) {
+    if ( gNextChar == '=' || gNextChar == '>' || gNextChar == '-' ) {
+      special[1] = gNextChar ;
+      GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+    } // if
+  } // else if
+  else if ( special[0] == '*' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '/' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '>' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '<' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '!' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '%' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '&' && gNextChar == '&' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '|' && gNextChar == '|' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '>' && gNextChar == '>' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '<' && gNextChar == '<' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+  else if ( special[0] == '=' && gNextChar == '=' ) {
+    special[1] = gNextChar ;
+    GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+  } // else if
+
+  CharPtr specialPtr = new Str40 ;
+  strcpy( specialPtr, special ) ;
+  return specialPtr ;
+
+} // GetSpecial()
+
+CharPtr GetToken( TokenType & tokenType, int & firstCharLine, int & firstCharColumn ) {
+  
+  bool slashIsDivide = false ;
+  int lineOfDivide = -1 ;
+  int columnOfDivide = -1 ;
+
+  while ( IsWhiteSpace( gNextChar ) || ( gNextChar == '/' && ! slashIsDivide ) ) {
+    if ( IsWhiteSpace( gNextChar ) ) SkipWhiteSpaces() ;
+    else if ( gNextChar == '/' ) {
+      lineOfDivide = gNextCharLine ;
+      columnOfDivide = gNextCharColumn ;
+
+      GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+      if ( gNextChar == '/' )  SkipLineComment() ;
+      else if ( gNextChar == '*' )  SkipMultiLineComment() ;
+      else  slashIsDivide = true ;
+    } // else if
+  } // while
+
+  firstCharLine = gNextCharLine ;
+  firstCharColumn = gNextCharColumn ;
+  CharPtr tokenStr = NULL ;
+
+  if ( slashIsDivide ) {
+    if ( gNextChar == '=' ) {
+      tokenStr = new Str40 ;
+      tokenType = SPECIAL ;
+      GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+      strcpy( tokenStr, "/=" ) ;
+      firstCharColumn -= 1 ;
+    } // if
+    else {
+      tokenStr = new Str40 ;
+      tokenType = SPECIAL ;
+      strcpy( tokenStr, "/" ) ;
+      firstCharLine = lineOfDivide ;
+      firstCharColumn = columnOfDivide ;
+    } // else 
+  } // if
+  else if ( IsLetter( gNextChar ) || gNextChar == '_' ) {
+    tokenStr = GetID( ) ;
+    tokenType = IDENTIFIER ;
+  } // if
+  else if ( IsDigit( gNextChar ) || gNextChar == '.' ) {
+    tokenStr = GetNum( ) ;
+    tokenType = CONSTANT ;
+  } // else if
+  else if ( gNextChar == '\'' ) {
+    tokenStr = GetCharConst( ) ;
+    tokenType = CONSTANT ;
+  } // else if
+  else if ( gNextChar == '\"' ) {
+    tokenStr = GetStringConst( ) ;
+    tokenType = CONSTANT ;
+  } // else if
+  else if ( IsSpecial( gNextChar ) ) {
+    tokenStr = GetSpecial( ) ;
+    tokenType = SPECIAL ;
+  } // else if
+
+  return tokenStr ;
+
+} // GetToken()
+
+void OrderInsertToken( TokenPtr & head, CharPtr tokenStr, 
+                       TokenType tokenType, int tokenLine, int tokenColumn ) {
+
+  Token * tokenInsert = new Token ;
+  Line * lineInsert = new Line ;
+  Column * columnInsert = new Column ;
+
+  tokenInsert->tokenStr = tokenStr ;
+  tokenInsert->type = tokenType ;
+  tokenInsert->next = NULL ;
+  
+  columnInsert->column = tokenColumn ;
+  columnInsert->next = NULL ;
+  lineInsert->line = tokenLine ;
+  lineInsert->next = NULL ;
+
+  if ( head == NULL ) {
+    tokenInsert->firstAppearOn = lineInsert ;
+    tokenInsert->lastAppearOn = lineInsert ;
+    lineInsert->firstAppearAt = columnInsert ;
+    lineInsert->lastAppearAt = columnInsert ;
+    head = tokenInsert ;
+  } // if
+  else if ( strcmp( head->tokenStr, tokenStr ) == 0 ) {
+    if ( head->firstAppearOn->line == tokenLine ) { // °µcolumnn
+      head->lastAppearOn->lastAppearAt->next = columnInsert ;
+      head->lastAppearOn->lastAppearAt = columnInsert ;
+    } // if
+    else { // °µLine
+      head->lastAppearOn->next = lineInsert ;
+      head->lastAppearOn = lineInsert ;
+      lineInsert->firstAppearAt = columnInsert ;
+      lineInsert->lastAppearAt = columnInsert ;
+    } // else
+  } // else if
+  else if ( strcmp( head->tokenStr, tokenStr ) > 0 ) {
+    tokenInsert->firstAppearOn = lineInsert ;
+    tokenInsert->lastAppearOn = lineInsert ;
+    lineInsert->firstAppearAt = columnInsert ;
+    lineInsert->lastAppearAt = columnInsert ;
+    tokenInsert->next = head ;
+    head = tokenInsert ;
+  } // else if
+  else if ( head->next == NULL ) {
+    tokenInsert->firstAppearOn = lineInsert ;
+    tokenInsert->lastAppearOn = lineInsert ;
+    lineInsert->firstAppearAt = columnInsert ;
+    lineInsert->lastAppearAt = columnInsert ;
+    head->next = tokenInsert ;
+  } // else if
+  else {
+    tokenInsert = new Token ;
+    lineInsert = new Line ;
+    columnInsert = new Column ;
+    delete tokenInsert ;
+    delete lineInsert ;
+    delete columnInsert ;
+
+    OrderInsertToken( head->next, tokenStr, tokenType, tokenLine, tokenColumn ) ;
+  } // else
+
+} // OrderInsertToken()
+
+void PrintAllTokenInfo( int maxNumOfTokensToPrint, TokenPtr head ) {
+
+  int i = 0 ;
+  TokenPtr temp = head ;
+  LinePtr lineTemp = NULL ;
+  ColumnPtr columnTemp = NULL ;
+
+  while ( temp != NULL && i < maxNumOfTokensToPrint ) {
+    lineTemp = temp->firstAppearOn ;
+    printf( "%s", temp->tokenStr ) ;
+    while ( lineTemp != NULL ) {
+      columnTemp = lineTemp->firstAppearAt ;
+      while ( columnTemp != NULL ) {
+        printf( " (%d,%d)", lineTemp->line, columnTemp->column ) ;
+        columnTemp = columnTemp->next ;
+      } // while
+      
+      lineTemp = lineTemp->next ;
+    } // while
+
+    printf( "\n" ) ;
+    temp = temp->next ;
+    i++ ;
+  } // while
+
+} // PrintAllTokenInfo()
+
+int QuestionOne( TokenPtr head ) {
+  int num = 0 ;
+
+  if ( head == NULL )  return num ;
+  num++ ;
+  num = num + QuestionOne( head->next ) ;
+  return num ;
+} // QuestionOne()
+
+void QuestionTwo( TokenPtr head ) {
+  int ide = 0 ;
+  int con = 0 ;
+  int spe = 0 ;
+
+  TokenPtr temp = head ;
+
+  while ( temp != NULL ) {
+    if ( temp->type == IDENTIFIER )  ide++ ;
+    else if ( temp->type == CONSTANT )  con++ ;
+    else if ( temp->type == SPECIAL )  spe++ ;
+
+    temp = temp->next ;
+  } // while
+
+  printf( "Identifer : %d\n", ide ) ;
+  printf( "Constant : %d\n", con ) ;
+  printf( "Special : %d\n", spe ) ;
+} // QuestionTwo()
+
+void QuestionThree( TokenPtr head, Str40 token ) {
+  TokenPtr temp = head ;
+  LinePtr lineTemp = NULL ;
+  ColumnPtr columnTemp = NULL ;  
+
+  bool isFind = false ;
+
+  while ( temp != NULL ) {
+    lineTemp = temp->firstAppearOn ;
+    if ( strcmp( temp->tokenStr, token ) == 0 ) {
+      isFind = true ;
+      printf( "%s", temp->tokenStr ) ;
+      while ( lineTemp != NULL ) {
+        columnTemp = lineTemp->firstAppearAt ;
+        while ( columnTemp != NULL ) {
+          printf( " (%d,%d)", lineTemp->line, columnTemp->column ) ;
+          columnTemp = columnTemp->next ;
+        } // while
+
+        lineTemp = lineTemp->next ;
+      } // while
+
+      printf( "\n" ) ;
+    } // if
+    
+    temp = temp->next ;
+  } // while
+
+  if ( !isFind )  printf( "There is no such token : %s\n", token ) ;
+
+} // QuestionThree()
+
+void QuestionFour( TokenPtr head, int line ) {
+  TokenPtr temp = head ;
+  LinePtr lineTemp = NULL ;
+  bool isPrint = false ;
+
+  while ( temp != NULL ) {
+    lineTemp = temp->firstAppearOn ;
+    while ( lineTemp != NULL ) {
+      if ( lineTemp->line == line && !isPrint ) {
+        printf( "%s\n", temp->tokenStr ) ;
+        isPrint = true ;
+      } // if
+
+      lineTemp = lineTemp->next ;
+    } // while
+
+    temp = temp->next ;
+    isPrint = false ;
+  } // while
+} // QuestionFour()
+
+void HandleUI( TokenPtr listHead ) {
+
+  printf( "\nWelcome to interactive I/O.\n" ) ;
+  printf( "1. How many different tokens are there?\n" ) ;
+  printf( "2. How many tokens are there for each case?\n" ) ;
+  printf( "3. Print (line number, column number) of this token ->\n" ) ;
+  printf( "4. What tokens appear on this line ->\n" ) ;
+  printf( "5. End.\n" ) ;
+
+  int q = 0 ;
+  int line = 0 ;
+  Str40 token = "\0" ;
+
+  int tokenNum = 0 ;
+  int n = scanf( "%d", &q ) ;
+
+  while ( n != EOF ) {
+    if ( q == 1 ) {
+      tokenNum = QuestionOne( listHead ) ;
+      printf( "\n> There are %d different tokens in total.\n", tokenNum ) ;
+    } // if
+    else if ( q == 2 ) {
+      printf( "\n> " ) ;
+      QuestionTwo( listHead ) ;
+    } // else if
+    else if ( q == 3 ) {
+      printf( "\n> " ) ;
+      scanf( "%s", token ) ;
+      QuestionThree( listHead, token ) ;
+    } // else if
+    else if ( q == 4 ) {
+      printf( "\n> " ) ;
+      scanf( "%d", &line ) ;
+      QuestionFour( listHead, line ) ;
+    } // else if
+    else if ( q == 5 ) {
+      printf( "\n> " ) ;
+      return ;
+    } // else if
+
+    n = scanf( "%d", &q ) ;
+  } // while
+
+} // HandleUI()
+
+int main() {
+  char ch = '\0' ;
+
+  CharPtr tokenStr = NULL ;
+  int tokenLine = 0, tokenColumn = 0 ;
+  TokenType tokenType ;
+
+  TokenPtr listHead = NULL ;   // !!! empty token list at the start
+
+  scanf( "%d%c", &uTestNum, &ch ) ;
+
+  GetNextChar( gNextChar, gNextCharLine, gNextCharColumn ) ;
+
+  do {
+
+    tokenStr = GetToken( tokenType, tokenLine, tokenColumn ) ;
+
+    if ( strcmp( tokenStr, "END_OF_FILE" ) != 0 )
+      OrderInsertToken( listHead, tokenStr, tokenType, tokenLine, tokenColumn ) ;
+
+  } while ( strcmp( tokenStr, "END_OF_FILE" ) != 0 ) ;
+
+  if ( uTestNum == 1 )
+    PrintAllTokenInfo( 1000, listHead ) ;
+  else if ( uTestNum == 2 )
+    PrintAllTokenInfo( 18, listHead ) ;
+  else if ( uTestNum == 3 )
+    PrintAllTokenInfo( 1000, listHead ) ;
+  else if ( uTestNum == 4 )
+    PrintAllTokenInfo( 13, listHead ) ;
+  else if ( uTestNum == 5 )
+    PrintAllTokenInfo( 77, listHead ) ;
+  else if ( uTestNum == 6 )
+    PrintAllTokenInfo( 1000, listHead ) ;
+  else if ( uTestNum == 7 )
+    PrintAllTokenInfo( 1000, listHead ) ;
+
+  HandleUI( listHead ) ;
+
+  return 0 ;
+
+} // main()
+
